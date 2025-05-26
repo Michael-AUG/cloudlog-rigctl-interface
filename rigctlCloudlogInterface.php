@@ -1,76 +1,84 @@
 #!/usr/bin/php
 <?php
+/**
+ * @brief        Cloudlog rigctld Interface
+ * @date         2018-12-02
+ * @author       Manawyrm
+ * @copyright    MIT-licensed
+ *
+ */
 
 include("config.php");
-include("rigctld.php"); 
+include("rigctld.php");
 
-$rigctl = new rigctldAPI($rigctl_host, $rigctl_port); 
+$rigctl = new rigctldAPI($rigctl_host, $rigctl_port);
 
-//$rigPower = ((int)shell_exec('rigctl -m2 \get_level RFPOWER')*100);
-$lastFrequency = false; 
-$lastMode = false; 
-$lastPower = false;
-$rigPower = false;
-while (true)
-{
-	$data = $rigctl->getFrequencyAndMode();
-	// check if we've gotten a proper response from rigctld
-	if ($data !== false)
-	{
-		// only send POST to CloudLog if the settings have changed
-		if ($lastFrequency != $data['frequency'] || $lastMode != $data['mode'])
-		{
-			$data = [
-				"radio" => $radio_name,
-				"frequency" => $data['frequency'],
-				"mode" => $data['mode'],
-				"prop_mode" => "",
+$lastFrequency = false;
+$lastMode = false;
 
-				/* Found these additional parameter in magicbug's SatPC32 application. 
-				   I'm not much of a satellite op yet, so I'm not sure how these should be implemented (probably with the secondary VFOs?)
-				   PR or Issues with details welcome! 
+while (true) {
+    $data = $rigctl->getFrequencyAndMode();
 
-				   I'm still sending these values in order to mitigate a nasty "Message: Undefined variable: uplink_mode" PHP error in one of the AJAX calls.
-				*/ 
-				"sat_name" => "",
-				"downlink_freq" => 0,
-				"uplink_freq" => 0,
-				"downlink_mode" => 0,
-				"uplink_mode" => 0,
-				"power" =>  ((round((float)shell_exec('rigctl -m2 \get_level RFPOWER')*100))),
-				"key" => $cloudlog_apikey
-				];
+    // debug: show what we got from rigctld
+    echo "Got from rigctld: freq='{$data['frequency']}' mode='{$data['mode']}'\n";
 
-			postInfoToCloudlog($cloudlog_url, $data);
-			$lastMode = $data['mode'];
-			$lastFrequency = $data['frequency'];
-			$lastPower = $data['power'];
+    // Validate frequency and mode are non-empty strings
+    if ($data !== false && !empty($data['frequency']) && !empty($data['mode'])) {
+        
+        // Only send POST to cloudlog if frequency or mode changed
+        if ($lastFrequency !== $data['frequency'] || $lastMode !== $data['mode']) {
+            $postData = [
+                "radio" => $radio_name,
+                "frequency" => $data['frequency'],
+                "mode" => $data['mode'],
+                "key" => $cloudlog_apikey
+                /* Optional additional parameters, if needed
+                "sat_name" => "",
+                "downlink_freq" => 0,
+                "uplink_freq" => 0,
+                "downlink_mode" => 0,
+                "uplink_mode" => 0,
+                "key" => $cloudlog_apikey
+                */
+            ];
 
-			echo "Updated info. Frequency: " . $data['frequency'] . " - Mode: " . $data['mode'] . " - Power: " . $data['power'] . "\n" ;
-		}
-		
-	}
-	else
-	{
-		$rigctl->connect();
-	}
+            // Debug: show what we are about to post
+            echo "Posting to Cloudlog: " . json_encode($postData) . "\n";
 
-	sleep($interval);
+            postInfoToCloudlog($cloudlog_url, $postData);
+
+            $lastFrequency = $data['frequency'];
+            $lastMode = $data['mode'];
+
+            echo "Updated info. Frequency: " . $lastFrequency . " - Mode: " . $lastMode . "\n";
+        }
+    } else {
+        echo "Invalid or empty frequency/mode received; reconnecting...\n";
+        $rigctl->connect();
+    }
+
+    sleep($interval);
 }
-
 
 function postInfoToCloudlog($url, $data)
 {
-	$json = json_encode($data, JSON_PRETTY_PRINT);
-	$ch = curl_init( $url . '/index.php/api/radio' );
-	curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST"); 
-	curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-	curl_setopt($ch, CURLOPT_HTTPHEADER, [
-		'Content-Type: application/json',
-		'Content-Length: ' . strlen($json)
-	]); 
+    $json = json_encode($data, JSON_PRETTY_PRINT);
+    $ch = curl_init($url . '/index.php/api/radio');
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Content-Length: ' . strlen($json)
+    ]);
 
-	$result = curl_exec($ch);
-	//var_dump($result);
+    $result = curl_exec($ch);
+
+    if ($result === false) {
+        echo "Curl error: " . curl_error($ch) . "\n";
+    } else {
+        echo "Cloudlog API response: " . $result . "\n";
+    }
+
+    curl_close($ch);
 }
