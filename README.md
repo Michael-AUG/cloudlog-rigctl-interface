@@ -1,4 +1,24 @@
 # cloudlog-rigctl-interface
+## Edits
+This fork contains changes by Michael GM5AUG, to address issues with the `runCommand("fm"...)` function. The way that rigctl responds to `fm` can lead to values being misassigned to variables, ending up with situations where we send the following to Cloudlog:
+```
+Frequency: CW - Mode: 500
+Frequency: 500 - Mode: 7011000
+```
+To overcome this, `rigctld.php` now queries the frequency and mode separately, and parses and cleans the data to make sure no false values are passed on to CloudLog.
+
+This makes sure that `7011000` is not passed as a `mode`. It makes sure that:
+* Frequency is numerical
+* Mode is a string (of pre-set values)
+* Neither is empty
+
+Another alteration is in the `rigctlCloudlogInterface.php` file, where I added the `"key" => $cloudlog_apikey` line to the data array. Once adding this, CloudLog accepted the information.
+
+Hopefully these changes are of use to someone!
+
+73 Michael GM5AUG
+
+## Original README
 Connects Cloudlog to rigctld / hamlib via PHP.
 This allows you to automatically log the used frequency and mode in Cloudlog's Live QSO menu. 
 
